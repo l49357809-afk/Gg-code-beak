@@ -10886,6 +10886,124 @@ MainTab:AddKeybind("TurnbindKeybind", {
 end
 
 local lagswitchEnabled = false
+
+-- === FFLAG LAGSWITCH MOVABLE BUTTON ===
+local lagSwitchGui = Instance.new("ScreenGui")
+lagSwitchGui.Name = "LagSwitchGui"
+lagSwitchGui.ResetOnSpawn = false
+lagSwitchGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+lagSwitchGui.Parent = player:WaitForChild("PlayerGui")
+
+local flagButton = Instance.new("TextButton")
+flagButton.Name = "FLAG"
+flagButton.Size = UDim2.new(0, 70, 0, 40)
+flagButton.Position = UDim2.new(0.5, -35, 0.3, 0)
+flagButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+flagButton.BackgroundTransparency = 0.5
+flagButton.Text = "FLAG"
+flagButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+flagButton.TextSize = 16
+flagButton.Font = Enum.Font.GothamBold
+flagButton.Visible = false
+flagButton.Active = true
+flagButton.ZIndex = 5
+flagButton.Parent = lagSwitchGui
+
+local flagCorner = Instance.new("UICorner")
+flagCorner.CornerRadius = UDim.new(0, 8)
+flagCorner.Parent = flagButton
+
+local flagLocked = false
+local flagDragging = false
+local flagDragInput, flagDragStart, flagStartPos
+local flagHoldToken = 0
+local HOLD_TIME = 2
+
+local function updateFlagAppearance()
+    if lagswitchEnabled then
+        flagButton.BackgroundColor3 = Color3.fromRGB(40, 180, 40)
+        flagButton.Text = "FLAG ON"
+    else
+        flagButton.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+        flagButton.Text = "FLAG"
+    end
+    if flagLocked then
+        flagButton.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+        flagButton.Text = "FLAG 🔒"
+    end
+end
+
+local function setLagswitchState(state)
+    lagswitchEnabled = state
+    if lagswitchEnabled then
+        setfflag("MaxMissedWorldStepsRemembered", "1000")
+    else
+        setfflag("MaxMissedWorldStepsRemembered", "1")
+    end
+    if LagswitchFFLAGToggleObject then
+        syncToggle(LagswitchFFLAGToggleObject, state)
+    end
+    updateFlagAppearance()
+end
+
+flagButton.InputBegan:Connect(function(input)
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 and
+       input.UserInputType ~= Enum.UserInputType.Touch then return end
+
+    flagHoldToken += 1
+    local myToken = flagHoldToken
+    local stillPressed = true
+    local startTime = tick()
+
+    if not flagLocked then
+        flagDragging = true
+        flagDragStart = input.Position
+        flagStartPos = flagButton.Position
+    end
+
+    task.delay(HOLD_TIME, function()
+        if flagHoldToken ~= myToken then return end
+        if not stillPressed then return end
+        flagLocked = not flagLocked
+        flagDragging = false
+        updateFlagAppearance()
+        Fluent:Notify({
+            Title = "FFlag Lagswitch",
+            Content = flagLocked and "Button locked" or "Button unlocked",
+            Duration = 1.5,
+        })
+    end)
+
+    input.Changed:Connect(function()
+        if input.UserInputState == Enum.UserInputState.End then
+            stillPressed = false
+            flagHoldToken += 1
+            flagDragging = false
+            if (tick() - startTime) < HOLD_TIME then
+                setLagswitchState(not lagswitchEnabled)
+            end
+        end
+    end)
+end)
+
+flagButton.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement or
+       input.UserInputType == Enum.UserInputType.Touch then
+        flagDragInput = input
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if input == flagDragInput and flagDragging and not flagLocked then
+        local delta = input.Position - flagDragStart
+        flagButton.Position = UDim2.new(
+            flagStartPos.X.Scale, flagStartPos.X.Offset + delta.X,
+            flagStartPos.Y.Scale, flagStartPos.Y.Offset + delta.Y
+        )
+    end
+end)
+-- === END FFLAG LAGSWITCH BUTTON ===
+
 task.spawn(function()
     while task.wait(5) do
         if lagswitchEnabled then
@@ -10903,11 +11021,13 @@ LagswitchFFLAGToggleObject = MainTab:AddToggle("LagswitchFFLAGToggle", {
     Default = false,
     Callback = function(value)
         lagswitchEnabled = value
+        flagButton.Visible = value
         if lagswitchEnabled then
             setfflag("MaxMissedWorldStepsRemembered", "1000")
         else
             setfflag("MaxMissedWorldStepsRemembered", "1")
         end
+        updateFlagAppearance()
     end,
 })
 
